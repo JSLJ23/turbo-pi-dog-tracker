@@ -12,8 +12,8 @@
 
 namespace fs = std::filesystem;
 
-// Opens either a numeric camera index or a file/stream path with OpenCV VideoCapture.
-cv::VideoCapture open_live_capture(int source_index);
+// Opens a live camera device path with OpenCV VideoCapture.
+cv::VideoCapture open_live_capture(const fs::path& device_path);
 cv::VideoCapture open_video_file(const fs::path& path);
 
 // Creates a writer for the annotated README/demo video. Uses an MP4-family codec for .mp4/.mov.

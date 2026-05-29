@@ -82,8 +82,8 @@ int run_live(const Configuration& configuration)
     ScopedLiveSignalHandler signal_handler;
     // Load the ONNX model and prepares inference.
     DogTracker tracker(make_model_config(configuration));
-    // Open the webcam by numeric index.
-    cv::VideoCapture capture = open_live_capture(configuration.camera_source);
+    // Open the configured camera device path.
+    cv::VideoCapture capture = open_live_capture(configuration.camera_device_path);
     // Creates stdout telemetry for demo mode or TCP telemetry for server mode.
     const auto telemetry = make_telemetry_sink(configuration);
 
