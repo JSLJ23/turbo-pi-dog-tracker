@@ -46,6 +46,7 @@ TELEMETRY_PORT=8765 \
 ```
 
 ## Render mode
+https://github.com/user-attachments/assets/f82b1cb9-7a42-40ee-a319-4e7ce0503a7f
 ```bash
 ./build/turbo_pi_dog_tracker render \
   --input-video data/IMG_7243.mov \
