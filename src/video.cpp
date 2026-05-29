@@ -68,12 +68,12 @@ static void draw_label(cv::Mat& frame,
     cv::putText(frame, text, origin, cv::FONT_HERSHEY_SIMPLEX, scale, fg, thickness, cv::LINE_AA);
 }
 
-cv::VideoCapture open_live_capture(const fs::path& device_path)
+cv::VideoCapture open_live_capture(const int source_index)
 {
-    // Helper function to get a cv::VideoCapture from a Linux camera device path.
-    cv::VideoCapture capture(device_path.string(), cv::CAP_V4L2);
+    // Helper function to get a cv::VideoCapture from a camera source index.
+    cv::VideoCapture capture(source_index, cv::CAP_V4L2);
     if (!capture.isOpened()) {
-        throw std::runtime_error("Failed to open camera device: " + device_path.string());
+        throw std::runtime_error("Failed to open camera index: " + std::to_string(source_index));
     }
     return capture;
 }

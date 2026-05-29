@@ -52,7 +52,7 @@ static cxxopts::Options make_options(const char* argv0)
     options.add_options()
         // clang-format off
     ("model", "ONNX model path (default: models/yolo26n.onnx)", cxxopts::value<fs::path>(), "PATH")
-    ("camera", "Live camera device path (default: /dev/video0)", cxxopts::value<fs::path>(), "PATH")
+    ("camera", "Live camera index (default: 0)", cxxopts::value<int>(), "INT")
     ("input-video", "MP4/MOV/video input for render mode", cxxopts::value<fs::path>(), "PATH")
     ("output-video", "Annotated video output for render mode", cxxopts::value<fs::path>(), "PATH")
     ("confidence", "Dog confidence threshold, 0..1 (default: 0.5)", cxxopts::value<float>(), "FLOAT")
@@ -145,8 +145,8 @@ static void validate_configuration(Configuration& config)
         throw std::runtime_error("Telemetry port must be between 1 and 65535");
     }
 
-    if (config.run_mode == RunMode::Demo && config.camera_device_path.empty()) {
-        throw std::runtime_error("Demo live modes require --camera PATH");
+    if (config.run_mode != RunMode::Render && config.camera_source < 0) {
+        throw std::runtime_error("--camera must be a non-negative camera index");
     }
 
     if (config.run_mode == RunMode::Render) {
@@ -187,7 +187,7 @@ Configuration parse_args(const int argc, const char* argv[])
     if (parse_result.count("model") != 0)
         configuration.model_weights_path = parse_result["model"].as<fs::path>();
     if (parse_result.count("camera") != 0)
-        configuration.camera_device_path = parse_result["camera"].as<fs::path>();
+        configuration.camera_source = parse_result["camera"].as<int>();
     if (parse_result.count("input-video") != 0)
         configuration.input_video_path = parse_result["input-video"].as<fs::path>();
     if (parse_result.count("output-video") != 0)
