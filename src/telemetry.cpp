@@ -323,6 +323,8 @@ std::unique_ptr<TelemetrySink> make_telemetry_sink(const Configuration& configur
         case TelemetryMode::None:
             return std::make_unique<NullTelemetry>();
     }
+
+    return std::make_unique<NullTelemetry>();
 }
 
 std::string make_telemetry_json(const int64_t ts_ms,
