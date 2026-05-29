@@ -23,10 +23,34 @@ sudo mkdir -p /run/opengl-driver/lib
 sudo find /usr/lib -name 'libcuda.so*' -exec ln -s {} /run/opengl-driver/lib/ \;
 ```
 
-## Server mode
-
-
 ## Demo mode
+```bash
+./build/turbo_pi_dog_tracker demo \
+  --camera /dev/video0 \
+  --confidence 0.80 \
+  --nms 0.30 \
+  --model models/yolo26n_bs1.onnx
+```
 
+## Server mode
+Server mode serves TCP telemetry on `127.0.0.1:8765` by default. Override the bind address with
+`TELEMETRY_HOST` and `TELEMETRY_PORT`.
+```bash
+TELEMETRY_HOST=127.0.0.1 \
+TELEMETRY_PORT=8765 \
+./build/turbo_pi_dog_tracker server \
+  --camera /dev/video2 \
+  --confidence 0.80 \
+  --nms 0.30 \
+  --model models/yolo26n_bs1.onnx
+```
 
 ## Render mode
+```bash
+./build/turbo_pi_dog_tracker render \
+  --input-video data/IMG_6377.mov \
+  --output-video data/IMG_6377_with_overlay.mov \
+  --confidence 0.80 \
+  --nms 0.30 \
+  --model models/yolo26n_bs32.onnx
+```
