@@ -29,7 +29,7 @@ sudo find /usr/lib -name 'libcuda.so*' -exec ln -s {} /run/opengl-driver/lib/ \;
   --camera 2 \
   --confidence 0.80 \
   --nms 0.30 \
-  --model models/yolo26n_bs1.onnx
+  --model models/yolo26n_640_bs1.onnx
 ```
 
 ## Server mode
@@ -42,15 +42,15 @@ TELEMETRY_PORT=8765 \
   --camera 0 \
   --confidence 0.80 \
   --nms 0.30 \
-  --model models/yolo26n_bs1.onnx
+  --model models/yolo26n_640_bs1.onnx
 ```
 
 ## Render mode
 ```bash
 ./build/turbo_pi_dog_tracker render \
-  --input-video data/IMG_6377.mov \
-  --output-video data/IMG_6377_with_overlay.mov \
+  --input-video data/IMG_7243.mov \
+  --output-video data/IMG_7243_with_overlay.mov \
   --confidence 0.80 \
   --nms 0.30 \
-  --model models/yolo26n_bs32.onnx
+  --model models/yolo26x_1280_bs32.onnx
 ```
