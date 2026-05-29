@@ -118,6 +118,26 @@ struct glz::meta<LostTelemetry> {
                                              &LostTelemetry::track_id);
 };
 
+// Runtime state hidden behind TcpTelemetry's PIMPL pointer.
+// The public header only needs to expose that TcpTelemetry exists; the socket list, mutex, and
+// background thread are Linux/POSIX implementation details.
+class TcpTelemetry::Impl {
+    public:
+        // Shared stop flag read by the accept loop and written by the destructor.
+        std::atomic<bool> running{false};
+
+        // Accepting clients is separated from publish() so inference can continue emitting
+        // telemetry while a robot bridge connects or reconnects.
+        std::thread accept_thread;
+
+        // Protects clients because accept_loop() adds fds while publish() walks and removes them.
+        // The destructor also uses the same lock before closing clients.
+        std::mutex mutex;
+
+        // Connected client sockets. Each telemetry line is broadcast to every fd.
+        std::vector<int> clients;
+};
+
 void StdoutTelemetry::publish(const std::string& line)
 {
     // Demo mode is JSON Lines: one complete JSON object plus a newline per frame.
@@ -161,26 +181,6 @@ void TcpTelemetry::accept_loop()
         }
     }
 }
-
-// Runtime state hidden behind TcpTelemetry's PIMPL pointer.
-// The public header only needs to expose that TcpTelemetry exists; the socket list, mutex, and
-// background thread are Linux/POSIX implementation details.
-class TcpTelemetry::Impl {
-    public:
-        // Shared stop flag read by the accept loop and written by the destructor.
-        std::atomic<bool> running{false};
-
-        // Accepting clients is separated from publish() so inference can continue emitting
-        // telemetry while a robot bridge connects or reconnects.
-        std::thread accept_thread;
-
-        // Protects clients because accept_loop() adds fds while publish() walks and removes them.
-        // The destructor also uses the same lock before closing clients.
-        std::mutex mutex;
-
-        // Connected client sockets. Each telemetry line is broadcast to every fd.
-        std::vector<int> clients;
-};
 
 TcpTelemetry::TcpTelemetry(std::string host, const int port)
     : host(std::move(host)), port(port), impl(std::make_unique<Impl>())

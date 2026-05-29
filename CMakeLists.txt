@@ -41,6 +41,7 @@ target_compile_options(${PROJECT_NAME} PRIVATE -Wall -Wextra -Wpedantic -Werror)
 
 target_link_libraries(${PROJECT_NAME} PRIVATE
         opencv_core
+        opencv_highgui
         opencv_imgproc
         opencv_videoio
         cxxopts::cxxopts
