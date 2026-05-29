@@ -9,8 +9,10 @@
 #include <cmath>
 #include <filesystem>
 #include <iomanip>
+#include <iostream>
 #include <sstream>
 #include <stdexcept>
+#include <vector>
 
 
 namespace fs = std::filesystem;
@@ -23,20 +25,32 @@ static std::string lower_extension(const fs::path& path)
     return ext;
 }
 
-static int preferred_fourcc(const fs::path& path)
+struct CodecCandidate {
+        const char* name;
+        int fourcc;
+        int api_preference;
+};
+
+static std::vector<CodecCandidate> preferred_codecs(const fs::path& path)
 {
-    // Helper function that picks a video codec based on the output file path.
-    // MP4-ish file extension -> use mp4v
+    // Helper function that picks video codecs based on the output file path.
+    // MP4-ish file extension -> prefer H.264, fall back to mp4v
     // anything else          -> use MJPG
     const std::string ext = lower_extension(path);
     if (ext == ".mp4" || ext == ".mov" || ext == ".m4v") {
         // fourcc means “four-character code.”
         // OpenCV uses it to choose the video encoding format.
-        // For .mp4, .mov, and .m4v, use the mp4v codec.
-        return cv::VideoWriter::fourcc('m', 'p', '4', 'v');
+        // avc1 selects H.264/AVC for MP4-family containers when FFmpeg supports it.
+        return {
+            {"h264-avc1",   cv::VideoWriter::fourcc('a', 'v', 'c', '1'), cv::CAP_FFMPEG},
+            {"mp4v-ffmpeg", cv::VideoWriter::fourcc('m', 'p', '4', 'v'), cv::CAP_FFMPEG},
+            {"mp4v",        cv::VideoWriter::fourcc('m', 'p', '4', 'v'), cv::CAP_ANY   },
+        };
     }
     // For every other extension, fall back to MJPG, Motion JPEG.
-    return cv::VideoWriter::fourcc('M', 'J', 'P', 'G');
+    return {
+        {"mjpg", cv::VideoWriter::fourcc('M', 'J', 'P', 'G'), cv::CAP_ANY}
+    };
 }
 
 static void draw_label(cv::Mat& frame,
@@ -95,11 +109,15 @@ cv::VideoWriter open_overlay_writer(const fs::path& path, double fps, const cv::
         fps = 30.0;
     }
 
-    cv::VideoWriter writer(path, preferred_fourcc(path), fps, size, true);
-    if (!writer.isOpened()) {
-        throw std::runtime_error("Failed to open output video writer: " + path.string());
+    for (const auto& [name, fourcc, api_preference] : preferred_codecs(path)) {
+        cv::VideoWriter writer(path.string(), api_preference, fourcc, fps, size, true);
+        if (writer.isOpened()) {
+            std::cout << "output_video_encoder=" << name << std::endl;
+            return writer;
+        }
     }
-    return writer;
+
+    throw std::runtime_error("Failed to open output video writer: " + path.string());
 }
 
 void draw_tracking_overlay(cv::Mat& frame, const TrackingResult& result, uint64_t frame_index)
