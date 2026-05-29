@@ -41,6 +41,8 @@
                 cmake
                 cxxopts
                 opencvWithGui
+                libcanberra-gtk3
+                v4l-utils
                 onnxruntime
                 glaze
                 openssl
@@ -59,6 +61,7 @@
               export DOG_TRACKER_CMAKE_FLAGS="-DUSE_CUDA=${
                 if enableCuda then "ON" else "OFF"
               }"
+              export GTK_PATH=${pkgs.libcanberra-gtk3}/lib/gtk-3.0''${GTK_PATH:+:$GTK_PATH}
             '';
           };
         });
@@ -68,7 +71,7 @@
           opencvWithGui = pkgs.opencv.override { enableGtk3 = true; };
           buildDependencies = with pkgs; [ gcc14 cmake ];
           cppDependencies = with pkgs;
-            [ cxxopts opencvWithGui onnxruntime glaze openssl ]
+            [ cxxopts opencvWithGui libcanberra-gtk3 onnxruntime glaze openssl ]
             ++ lib.optionals enableCuda [ cudaPackages.cudatoolkit ];
           projectName = "turbo_pi_dog_tracker";
         in pkgs.stdenv.mkDerivation {
