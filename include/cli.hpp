@@ -28,7 +28,7 @@ enum class TelemetryMode {
 
 struct Configuration {
         RunMode run_mode;
-        fs::path model_weights_path{"models/yolo26n_bs1.onnx"};
+        fs::path model_weights_path{"models/yolo26n_640_bs1.onnx"};
         int camera_source = 0;
         fs::path input_video_path{};
         fs::path output_video_path{};

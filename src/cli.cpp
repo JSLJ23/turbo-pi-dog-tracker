@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <string>
 #include <string_view>
+#include <vector>
 
 
 namespace fs = std::filesystem;
@@ -51,46 +52,66 @@ static cxxopts::Options make_options(const char* argv0)
     options.custom_help("[options]");
     options.add_options()
         // clang-format off
-    ("model", "ONNX model path (default: models/yolo26n.onnx)", cxxopts::value<fs::path>(), "PATH")
+    ("model", "ONNX model path (default: models/yolo26n_640_bs1.onnx)", cxxopts::value<fs::path>(), "PATH")
     ("camera", "Live camera index (default: 0)", cxxopts::value<int>(), "INT")
     ("input-video", "MP4/MOV/video input for render mode", cxxopts::value<fs::path>(), "PATH")
     ("output-video", "Annotated video output for render mode", cxxopts::value<fs::path>(), "PATH")
     ("confidence", "Dog confidence threshold, 0..1 (default: 0.5)", cxxopts::value<float>(), "FLOAT")
     ("nms", "NMS IoU threshold, 0..1 (default: 0.5)", cxxopts::value<float>(), "FLOAT")
-    ("input-size", "Square model input size, multiple of 32 (default: 640)", cxxopts::value<int>(), "INT")
     ("h,help", "Show this help");
     // clang-format on
     return options;
 }
 
-
-static std::optional<int> batch_size_from_model_path(const fs::path& model_path)
+static std::vector<std::string_view> split_stem(const std::string_view stem)
 {
-    const std::string stem = model_path.stem().string();
-    // _bs suffix denotes the fixed batch size in the ONNX exported mode.
-    const size_t marker = stem.rfind("_bs");
-    if (marker == std::string::npos) {
-        return std::nullopt;
+    // Split the model file name into parts delimited by underscore.
+    std::vector<std::string_view> parts;
+    size_t start = 0;
+    while (start <= stem.size()) {
+        const size_t end = stem.find('_', start);
+        // For trailing string slice after the last underscore.
+        if (end == std::string_view::npos) {
+            parts.emplace_back(stem.data() + start, stem.size() - start);
+            break;
+        }
+        // For all other string
+        parts.emplace_back(stem.data() + start, end - start);
+        start = end + 1;
+    }
+    return parts;
+}
+
+static std::pair<int, int> model_input_size_and_batch_size_from_filename(const fs::path& model_path)
+{
+    const std::string stem                    = model_path.stem().string();
+    const std::vector<std::string_view> parts = split_stem(stem);
+    if (parts.size() < 3) {
+        throw std::runtime_error(
+            "Model filename must use yolo26{size}_{input_size}_bs{batch_size}.onnx: " +
+            model_path.string());
     }
 
-    // model_path = "models/yolo26n_bs32.onnx"
-    //  stem       = "yolo26n_bs32"
-    //  marker     = 7 (position of "_bs")
-    //  start      = 7 + 3 = 10
-    //  length     = 12 - 7 - 3 = 2
-    //  suffix     = "32"
-    const std::string_view suffix(stem.data() + marker + 3, stem.size() - marker - 3);
-    if (suffix.empty()) {
-        throw std::runtime_error("Model filename batch suffix must end with digits after _bs: " +
+    // model_path = "models/yolo26n_1280_bs32.onnx"
+    //  input_size = "1280"
+    //  batch_size = "32"
+    const std::string_view input_size_digits = parts[parts.size() - 2];
+
+    const std::string_view batch = parts.back();
+    if (!batch.starts_with("bs") || batch.size() <= 2) {
+        throw std::runtime_error("Model filename batch suffix must use bs{batch_size}: " +
                                  model_path.string());
     }
-    return parse_number<int>(suffix, "model filename batch suffix");
+    const std::string_view batch_size_digits(batch.data() + 2, batch.size() - 2);
+
+    return {parse_number<int>(input_size_digits, "model filename input size"),
+            parse_number<int>(batch_size_digits, "model filename batch size")};
 }
 
 
 static void apply_telemetry_from_environment(Configuration& config)
 {
-    // Sets the host IP and port from enviroment variables
+    // Sets the host IP and port from environment variables
     if (const char* host = std::getenv("TELEMETRY_HOST"); host != nullptr && host[0] != '\0') {
         config.telemetry_host = host;
     }
@@ -121,12 +142,13 @@ static void validate_configuration(Configuration& config)
             break;
     }
 
-    if (const auto model_batch_size = batch_size_from_model_path(config.model_weights_path)) {
-        config.batch_size = *model_batch_size;
-    }
+    const auto& [input_size, batch_size] =
+        model_input_size_and_batch_size_from_filename(config.model_weights_path);
+    config.input_size = input_size;
+    config.batch_size = batch_size;
 
     if (config.input_size <= 0 || config.input_size % 32 != 0) {
-        throw std::runtime_error("--input-size must be a positive multiple of 32");
+        throw std::runtime_error("Model filename input size must be a positive multiple of 32");
     }
 
     if (config.batch_size <= 0) {
@@ -196,8 +218,6 @@ Configuration parse_args(const int argc, const char* argv[])
         configuration.confidence_threshold = parse_result["confidence"].as<float>();
     if (parse_result.count("nms") != 0)
         configuration.nms_threshold = parse_result["nms"].as<float>();
-    if (parse_result.count("input-size") != 0)
-        configuration.input_size = parse_result["input-size"].as<int>();
 
     validate_configuration(configuration);
 
