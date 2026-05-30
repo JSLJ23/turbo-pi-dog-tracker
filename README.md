@@ -26,6 +26,7 @@ sudo find /usr/lib -name 'libcuda.so*' -exec ln -s {} /run/opengl-driver/lib/ \;
 ```
 
 ## Demo mode
+https://github.com/user-attachments/assets/45494535-02ec-4b1a-8133-e06855adf821
 ```bash
 ./build/turbo_pi_dog_tracker demo \
   --camera 2 \
