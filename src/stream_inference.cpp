@@ -10,6 +10,8 @@
 
 #include <csignal>
 #include <iostream>
+#include <stdexcept>
+#include <string>
 
 
 // Global flag used by the Ctrl-C signal handler.
@@ -75,6 +77,12 @@ static void publish_frame(TelemetrySink& sink,
         make_telemetry_json(monotonic_time_ms(), frame_index, result, frame.cols, frame.rows));
 }
 
+static cv::Size requested_live_capture_size(const Configuration& configuration)
+{
+    const int width = configuration.input_size > 640 ? 1280 : 640;
+    return {width, width * 9 / 16};
+}
+
 
 int run_live(const Configuration& configuration)
 {
@@ -84,6 +92,10 @@ int run_live(const Configuration& configuration)
     DogTracker tracker(make_model_config(configuration));
     // Open the configured camera index.
     cv::VideoCapture capture = open_live_capture(configuration.camera_source);
+    // Ensure that the camera capture width matches the input size for the model.
+    const cv::Size requested_frame_size = requested_live_capture_size(configuration);
+    capture.set(cv::CAP_PROP_FRAME_WIDTH, requested_frame_size.width);
+    capture.set(cv::CAP_PROP_FRAME_HEIGHT, requested_frame_size.height);
     // Creates stdout telemetry for demo mode or TCP telemetry for server mode.
     const auto telemetry = make_telemetry_sink(configuration);
 
@@ -92,6 +104,8 @@ int run_live(const Configuration& configuration)
     constexpr std::string_view preview_window{"Dog Tracker"};
     if (show_preview) {
         cv::namedWindow(preview_window.data(), cv::WINDOW_NORMAL);
+        cv::resizeWindow(
+            preview_window.data(), requested_frame_size.width, requested_frame_size.height);
     }
 
     // frame receives camera reads. frames accumulates a batch for inference.
