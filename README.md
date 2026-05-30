@@ -1,6 +1,8 @@
 # turbo-pi-dog-tracker
 Dog detection and tracking for Turbo Pi robot
 
+https://github.com/user-attachments/assets/0c9d5c79-852c-4737-9afd-69a97c24ef80
+
 ## Nix DevShell
 ```bash
 nix develop
