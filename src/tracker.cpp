@@ -339,7 +339,7 @@ void DogTracker::preprocess(const cv::Mat& frame, std::vector<float>& output, Le
     // Letterbox preserves aspect ratio while matching the square YOLO tensor shape.
     cv::Mat resized;
     cv::resize(frame, resized, cv::Size(resized_width, resized_height));
-    // RGB (144, 144, 144) for grey pixesl.
+    // RGB (144, 144, 144) for grey pixel.
     cv::Mat canvas(
         model_config.input_size, model_config.input_size, CV_8UC3, cv::Scalar(114, 114, 114));
     // Copies the resized camera frame into a rectangular region inside the larger square canvas.
