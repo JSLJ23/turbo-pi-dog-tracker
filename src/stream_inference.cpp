@@ -65,6 +65,13 @@ static ModelConfig make_model_config(const Configuration& configuration)
 #else
         .use_cuda = false,
 #endif
+#if USE_TENSORRT
+        .use_tensorrt = true,
+#else
+        .use_tensorrt = false,
+#endif
+        .tensorrt_fp16       = true,
+        .tensorrt_cache_path = "tensorrt_cache",
     };
 }
 

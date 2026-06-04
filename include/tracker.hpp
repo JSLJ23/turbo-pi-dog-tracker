@@ -41,6 +41,9 @@ struct ModelConfig {
         int input_size             = 640;
         int batch_size             = 32;
         bool use_cuda              = false;
+        bool use_tensorrt          = false;
+        bool tensorrt_fp16         = true;
+        fs::path tensorrt_cache_path{"tensorrt_cache"};
 };
 
 class DogTracker {
@@ -73,7 +76,7 @@ class DogTracker {
         std::vector<Letterbox> letterboxes;
 
         void preprocess(const cv::Mat& frame, std::vector<float>& output, Letterbox* info) const;
-        std::vector<Detection> parse_detections(const Ort::Value& output,
+        [[nodiscard]] std::vector<Detection> parse_detections(const Ort::Value& output,
                                                 size_t batch_index,
                                                 const Letterbox& letterbox,
                                                 int frame_width,

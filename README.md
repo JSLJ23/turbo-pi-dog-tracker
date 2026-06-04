@@ -11,8 +11,8 @@ nix develop
 ## Build
 ```bash
 mkdir build && cd build
-cmake .. -DUSE_CUDA=ON
-make -j 8
+cmake .. -DUSE_CUDA=ON -DUSE_TENSORRT=ON
+make -j 6 # 6 compilation units for now but might increase in future
 ```
 
 ## Nix CUDA fix on non NixOS
@@ -56,5 +56,5 @@ https://github.com/user-attachments/assets/f82b1cb9-7a42-40ee-a319-4e7ce0503a7f
   --output-video data/IMG_7243_with_overlay.mov \
   --confidence 0.80 \
   --nms 0.30 \
-  --model models/yolo26x_1280_bs32.onnx
+  --model models/yolo26x_1280_bs4.onnx
 ```

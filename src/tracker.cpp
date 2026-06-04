@@ -8,6 +8,7 @@
 #include <iostream>
 #include <ranges>
 #include <thread>
+#include <unordered_map>
 
 
 namespace fs = std::filesystem;
@@ -191,39 +192,100 @@ Track update_track(Track& track, const std::vector<Detection>& detections)
     return track;
 }
 
-DogTracker::DogTracker(const ModelConfig& model_config)
-    : model_config(model_config), ort_env(ORT_LOGGING_LEVEL_WARNING, "DogTracker")
+// Helper functions to initialise the ONNX Runtime session with either CPU, GPU (CUDA) or GPU
+// (Tensor RT) execution provider.
+static Ort::SessionOptions make_base_session_options()
 {
+    // Base options for running on CPU.
     Ort::SessionOptions session_options;
     const int hardware_threads = static_cast<int>(std::thread::hardware_concurrency());
     session_options.SetIntraOpNumThreads(hardware_threads);
-    session_options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
+    session_options.SetGraphOptimizationLevel(ORT_ENABLE_ALL);
+    return session_options;
+}
+
+#if USE_CUDA
+static void append_cuda_provider(Ort::SessionOptions& session_options)
+{
+    Ort::CUDAProviderOptions cuda_options;
+    // Dereference the ONNX Runtime C++ wrapper to pass the underlying Ort*ProviderOptionsV2 object.
+    session_options.AppendExecutionProvider_CUDA_V2(*cuda_options);
+}
+#endif
+
+#if USE_TENSORRT
+static void append_tensorrt_provider(Ort::SessionOptions& session_options,
+                                     const ModelConfig& model_config)
+{
+    fs::create_directories(model_config.tensorrt_cache_path);
+
+    // Simple Tensor RT options for single GPU setup for now, can update in future.
+    Ort::TensorRTProviderOptions tensorrt_options;
+    std::unordered_map<std::string, std::string> options{
+        {"device_id",               "0"                                      },
+        {"trt_engine_cache_enable", "1"                                      },
+        {"trt_engine_cache_path",   model_config.tensorrt_cache_path.string()},
+        {"trt_timing_cache_enable", "1"                                      },
+        {"trt_timing_cache_path",   model_config.tensorrt_cache_path.string()},
+        {"trt_fp16_enable",         model_config.tensorrt_fp16 ? "1" : "0"   },
+        {"trt_cuda_graph_enable",   "1"                                      },
+    };
+
+    tensorrt_options.Update(options);
+    // Dereference the ONNX Runtime C++ wrapper to pass the underlying Ort*ProviderOptionsV2 object.
+    session_options.AppendExecutionProvider_TensorRT_V2(*tensorrt_options);
+}
+#endif
+
+static Ort::Session create_ort_session(const Ort::Env& ort_env, const ModelConfig& model_config)
+{
+#if USE_TENSORRT && USE_CUDA
+    if (model_config.use_tensorrt && model_config.use_cuda) {
+        try {
+            Ort::SessionOptions session_options = make_base_session_options();
+            append_tensorrt_provider(session_options, model_config);
+            append_cuda_provider(session_options);
+
+            Ort::Session session(ort_env, model_config.model_weights_path.c_str(), session_options);
+            std::cout << "ONNX Runtime provider initialisation with Tensor RT successful"
+                      << std::endl;
+            return session;
+        }
+        catch (const Ort::Exception& ex) {
+            std::cerr << "ONNX Runtime provider initialisation with Tensor RT failed \n"
+                      << ex.what() << " Falling back to CUDA or CPU" << std::endl;
+        }
+    }
+#endif
 
 #if USE_CUDA
     if (model_config.use_cuda) {
         try {
-            Ort::CUDAProviderOptions cuda_options;
-            session_options.AppendExecutionProvider_CUDA_V2(*cuda_options);
-            std::cerr << "onnxruntime_provider=cuda\n";
+            Ort::SessionOptions session_options = make_base_session_options();
+            append_cuda_provider(session_options);
+            Ort::Session session(ort_env, model_config.model_weights_path.c_str(), session_options);
+            std::cout << "ONNX Runtime provider initialisation with CUDA successful" << std::endl;
+            return session;
         }
-        catch (const Ort::Exception& error) {
-            std::cerr << "onnxruntime_provider=cuda_unavailable message=\"" << error.what()
-                      << "\" falling_back=cpu\n";
+        catch (const Ort::Exception& ex) {
+            std::cerr << "ONNX Runtime provider initialisation with CUDA failed \n"
+                      << ex.what() << " Falling back to CPU" << std::endl;
         }
     }
-    else {
-        std::cerr << "onnxruntime_provider=cpu\n";
-    }
-#else
-    // When USE_CUDA is off, the CUDA branch is not compiled.
-    // So model_config.use_cuda is not read anywhere inside that preprocessor path.
-    // The line (void)this->model_config is to silence an “unused variable/member” warning in the
-    // non-CUDA build.
-    (void)this->model_config;
-    std::cerr << "onnxruntime_provider=cpu\n";
 #endif
 
-    ort_session = Ort::Session(ort_env, model_config.model_weights_path.c_str(), session_options);
+    const Ort::SessionOptions session_options = make_base_session_options();
+    Ort::Session session(ort_env, model_config.model_weights_path.c_str(), session_options);
+    std::cout << "ONNX Runtime provider initialisation with CPU successful" << std::endl;
+    return session;
+}
+
+
+DogTracker::DogTracker(const ModelConfig& model_config)
+    : model_config(model_config), ort_env(ORT_LOGGING_LEVEL_WARNING, "DogTracker")
+{
+    ort_session = create_ort_session(ort_env, this->model_config);
+
     // ONNX Runtime’s API allocates the input/output name strings.
     const Ort::AllocatorWithDefaultOptions allocator;
     // input  -> one image batch tensor
