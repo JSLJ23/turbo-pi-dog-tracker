@@ -44,3 +44,7 @@ nix_env_variables.sh
 # Debug and scratch files and directories
 **/*debug*
 **/*scratch*
+
+# TensorRT cache files
+**/*.engine
+**/*.timing
