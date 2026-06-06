@@ -16,7 +16,7 @@ static T parse_number(const std::string_view text, const std::string_view option
 {
     T value{};
     const char* begin = text.data();
-    const char* end   = text.data() + text.size();
+    const char* end = text.data() + text.size();
     // Analyzes the character sequence [first, last) for a pattern described below.
     // If no characters match the pattern or if the value obtained by parsing the matched
     // characters is not representable in the type of value, value is unmodified, otherwise the
@@ -84,7 +84,7 @@ static std::vector<std::string_view> split_stem(const std::string_view stem)
 
 static std::pair<int, int> model_input_size_and_batch_size_from_filename(const fs::path& model_path)
 {
-    const std::string stem                    = model_path.stem().string();
+    const std::string stem = model_path.stem().string();
     const std::vector<std::string_view> parts = split_stem(stem);
     if (parts.size() < 3) {
         throw std::runtime_error(

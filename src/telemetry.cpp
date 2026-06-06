@@ -47,9 +47,9 @@ struct TrackedTelemetry {
         // Normalized center x/y and box size. These are fractions of the source frame dimensions,
         // not pixels, so the robot bridge can use the same controller constants across different
         // camera resolutions.
-        float cx     = 0.0f;
-        float cy     = 0.0f;
-        float width  = 0.0f;
+        float cx = 0.0f;
+        float cy = 0.0f;
+        float width = 0.0f;
         float height = 0.0f;
 
         // Normalized image-area fraction. For example, 0.18 means the tracked box occupies about
@@ -65,8 +65,8 @@ struct TrackedTelemetry {
 // Wire format for a frame where no dog target is active.
 // Consumers can treat this as a stop/hold signal because there are no coordinates to chase.
 struct LostTelemetry {
-        int64_t ts_ms          = 0;
-        uint64_t frame         = 0;
+        int64_t ts_ms = 0;
+        uint64_t frame = 0;
         std::string_view state = "lost";
 
         // Optional serializes as null when no track exists. Keeping the key present makes the
@@ -355,22 +355,22 @@ std::string make_telemetry_json(const int64_t ts_ms,
         (result.track.box.x + result.track.box.width / 2.0F) / static_cast<float>(frame_width);
     const float cy =
         (result.track.box.y + result.track.box.height / 2.0F) / static_cast<float>(frame_height);
-    const float width  = result.track.box.width / static_cast<float>(frame_width);
+    const float width = result.track.box.width / static_cast<float>(frame_width);
     const float height = result.track.box.height / static_cast<float>(frame_height);
 
     // Build the tracked event explicitly rather than aggregate-initializing every field so the
     // schema defaults above remain the single source for constants like state="tracked" and
     // class="dog".
     TrackedTelemetry event;
-    event.ts_ms      = ts_ms;
-    event.frame      = frame_index;
+    event.ts_ms = ts_ms;
+    event.frame = frame_index;
     event.confidence = result.track.confidence;
-    event.cx         = cx;
-    event.cy         = cy;
-    event.width      = width;
-    event.height     = height;
-    event.area       = width * height;
-    event.track_id   = result.track.id;
+    event.cx = cx;
+    event.cy = cy;
+    event.width = width;
+    event.height = height;
+    event.area = width * height;
+    event.track_id = result.track.id;
 
     std::string out;
     // Serialization errors should be impossible for this simple POD-like schema, but throwing keeps

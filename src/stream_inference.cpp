@@ -37,7 +37,7 @@ class ScopedLiveSignalHandler {
         ScopedLiveSignalHandler()
         {
             g_live_stop_requested = 0;
-            previous_handler      = std::signal(SIGINT, request_live_stop);
+            previous_handler = std::signal(SIGINT, request_live_stop);
         }
 
         ~ScopedLiveSignalHandler()
@@ -48,18 +48,18 @@ class ScopedLiveSignalHandler {
         }
 
     private:
-        using SignalHandler            = void (*)(int);
+        using SignalHandler = void (*)(int);
         SignalHandler previous_handler = SIG_DFL;
 };
 
 static ModelConfig make_model_config(const Configuration& configuration)
 {
     return ModelConfig{
-        .model_weights_path   = configuration.model_weights_path,
+        .model_weights_path = configuration.model_weights_path,
         .confidence_threshold = configuration.confidence_threshold,
-        .nms_threshold        = configuration.nms_threshold,
-        .input_size           = configuration.input_size,
-        .batch_size           = configuration.batch_size,
+        .nms_threshold = configuration.nms_threshold,
+        .input_size = configuration.input_size,
+        .batch_size = configuration.batch_size,
 #if USE_CUDA
         .use_cuda = true,
 #else
@@ -70,7 +70,7 @@ static ModelConfig make_model_config(const Configuration& configuration)
 #else
         .use_tensorrt = false,
 #endif
-        .tensorrt_fp16       = true,
+        .tensorrt_fp16 = true,
         .tensorrt_cache_path = "tensorrt_cache",
     };
 }
@@ -121,7 +121,7 @@ int run_live(const Configuration& configuration)
     frames.reserve(configuration.batch_size);
     // Tracks output frame number and local stop state.
     uint64_t frame_index = 0;
-    bool stop_requested  = false;
+    bool stop_requested = false;
 
     // Lambda that processes whatever frames are currently batched.
     auto run_inference_pipeline_on_batch = [&]() {
@@ -200,7 +200,7 @@ int run_render(const Configuration& configuration)
 
     // Get input FPS and create the output video writer.
     const double fps = capture.get(cv::CAP_PROP_FPS);
-    auto writer      = open_overlay_writer(configuration.output_video_path, fps, frame.size());
+    auto writer = open_overlay_writer(configuration.output_video_path, fps, frame.size());
 
     // frame receives video file reads. frames accumulates a batch for inference.
     std::vector<cv::Mat> frames;

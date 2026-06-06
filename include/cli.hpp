@@ -32,14 +32,14 @@ struct Configuration {
         int camera_source = 0;
         fs::path input_video_path{};
         fs::path output_video_path{};
-        std::string telemetry_host   = "127.0.0.1";
-        int telemetry_port           = 8765;
-        float confidence_threshold   = 0.5f;
-        float nms_threshold          = 0.5f;
-        int input_size               = 640;
-        int batch_size               = 1;
+        std::string telemetry_host = "127.0.0.1";
+        int telemetry_port = 8765;
+        float confidence_threshold = 0.5f;
+        float nms_threshold = 0.5f;
+        int input_size = 640;
+        int batch_size = 1;
         TelemetryMode telemetry_mode = TelemetryMode::Stdout;
-        bool show_help               = false;
+        bool show_help = false;
 };
 
 

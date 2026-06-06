@@ -17,16 +17,16 @@ namespace fs = std::filesystem;
 struct Detection {
         cv::Rect2f box; // the detected object rectangle in source-frame pixel coordinates.
         float confidence = 0.0f;
-        int class_id     = -1;
+        int class_id = -1;
 };
 
 struct Track {
         // For persisting object tracking across multiple frames.
         cv::Rect2f box;
         float confidence = 0.0f;
-        int id           = 1;
-        int missed       = 0;
-        bool active      = false;
+        int id = 1;
+        int missed = 0;
+        bool active = false;
 };
 
 struct TrackingResult {
@@ -37,12 +37,12 @@ struct TrackingResult {
 struct ModelConfig {
         fs::path model_weights_path{};
         float confidence_threshold = 0.5f;
-        float nms_threshold        = 0.5f;
-        int input_size             = 640;
-        int batch_size             = 32;
-        bool use_cuda              = false;
-        bool use_tensorrt          = false;
-        bool tensorrt_fp16         = true;
+        float nms_threshold = 0.5f;
+        int input_size = 640;
+        int batch_size = 32;
+        bool use_cuda = false;
+        bool use_tensorrt = false;
+        bool tensorrt_fp16 = true;
         fs::path tensorrt_cache_path{"tensorrt_cache"};
 };
 
@@ -91,12 +91,12 @@ class DogTracker {
                                  const std::vector<float>& host_input_buffer);
 
                 std::vector<int64_t> output_shape;
-                size_t input_element_count  = 0;
+                size_t input_element_count = 0;
                 size_t output_element_count = 0;
                 std::vector<float> host_output_buffer;
                 // These are the actual device memory addresses. They point to GPU memory containing
                 // tensor data:
-                float* input_data_gpu_ptr  = nullptr;
+                float* input_data_gpu_ptr = nullptr;
                 float* output_data_gpu_ptr = nullptr;
                 // RAII wrappers around internal ONNX Runtime handles
                 Ort::MemoryInfo cuda_memory_info{nullptr};

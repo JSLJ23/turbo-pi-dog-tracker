@@ -7,7 +7,6 @@ IndentAccessModifiers: true
 AccessModifierOffset: 0
 MaxEmptyLinesToKeep: 4
 AlignConsecutiveMacros: Consecutive
-AlignConsecutiveAssignments: Consecutive
 AlignArrayOfStructures: Left
 ColumnLimit: 100
 IndentWidth: 4

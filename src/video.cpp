@@ -62,7 +62,7 @@ static void draw_label(cv::Mat& frame,
 {
     // Helper to draw a text label with a filled background rectangle behind it.
     // Modifies the input frame in place.
-    int baseline            = 0;
+    int baseline = 0;
     constexpr int thickness = 1;
     // Update baseline, which is extra vertical space needed below the text baseline for characters
     // like g, y, or p.
@@ -151,7 +151,7 @@ void draw_tracking_overlay(cv::Mat& frame, const TrackingResult& result, uint64_
     const float cy =
         (result.track.box.y + result.track.box.height / 2.0f) / static_cast<float>(frame.rows);
     // Compute normalized box width and height.
-    const float width  = result.track.box.width / static_cast<float>(frame.cols);
+    const float width = result.track.box.width / static_cast<float>(frame.cols);
     const float height = result.track.box.height / static_cast<float>(frame.rows);
 
     // String builder for the label above/near the dog box.

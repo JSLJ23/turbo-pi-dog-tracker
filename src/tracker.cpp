@@ -17,7 +17,7 @@
 
 namespace fs = std::filesystem;
 
-constexpr int K_DOG_CLASS_ID    = 16; // COCO class id for dog.
+constexpr int K_DOG_CLASS_ID = 16; // COCO class id for dog.
 constexpr int MAX_MISSED_FRAMES = 10;
 
 
@@ -156,7 +156,7 @@ static Track update_track(Track& track, const std::vector<Detection>& detections
     }
 
     // Keep a single target by preferring overlap with the previous target, then confidence.
-    size_t best       = 0;
+    size_t best = 0;
     float best_metric = -std::numeric_limits<float>::infinity();
     for (const auto& [i, detection] : std::views::enumerate(detections)) {
         // If we already have an active track, compute IoU between the previous track box and this
@@ -168,7 +168,7 @@ static Track update_track(Track& track, const std::vector<Detection>& detections
             track.active ? (2.0f * overlap + detection.confidence) : detection.confidence;
         if (metric > best_metric) {
             best_metric = metric;
-            best        = i;
+            best = i;
         }
     }
 
@@ -180,9 +180,9 @@ static Track update_track(Track& track, const std::vector<Detection>& detections
         // detection + 30% previous track
         constexpr float alpha = 0.7f;
         // Mixing with previous values.
-        track.box.x      = alpha * best_detection.box.x + (1.0F - alpha) * track.box.x;
-        track.box.y      = alpha * best_detection.box.y + (1.0F - alpha) * track.box.y;
-        track.box.width  = alpha * best_detection.box.width + (1.0F - alpha) * track.box.width;
+        track.box.x = alpha * best_detection.box.x + (1.0F - alpha) * track.box.x;
+        track.box.y = alpha * best_detection.box.y + (1.0F - alpha) * track.box.y;
+        track.box.width = alpha * best_detection.box.width + (1.0F - alpha) * track.box.width;
         track.box.height = alpha * best_detection.box.height + (1.0F - alpha) * track.box.height;
     }
     else
@@ -191,8 +191,8 @@ static Track update_track(Track& track, const std::vector<Detection>& detections
 
     // Reset the missed-frame count, marks the track as active.
     track.confidence = best_detection.confidence;
-    track.missed     = 0;
-    track.active     = true;
+    track.missed = 0;
+    track.active = true;
     return track;
 }
 
@@ -349,7 +349,7 @@ DogTracker::CUDAGraphIO::CUDAGraphIO(Ort::Session& session,
     host_output_buffer.resize(output_element_count);
 
     cuda_memory_info = Ort::MemoryInfo("Cuda", OrtDeviceAllocator, 0, OrtMemTypeDefault);
-    cuda_allocator   = Ort::Allocator(session, cuda_memory_info);
+    cuda_allocator = Ort::Allocator(session, cuda_memory_info);
 
     // Tensor wrapper objects.
     gpu_input_tensor = Ort::Value::CreateTensor<float>(
@@ -358,7 +358,7 @@ DogTracker::CUDAGraphIO::CUDAGraphIO(Ort::Session& session,
         cuda_allocator, this->output_shape.data(), this->output_shape.size());
 
     // Actual pointers to GPU memory holding the tensor data.
-    input_data_gpu_ptr  = gpu_input_tensor.GetTensorMutableData<float>();
+    input_data_gpu_ptr = gpu_input_tensor.GetTensorMutableData<float>();
     output_data_gpu_ptr = gpu_output_tensor.GetTensorMutableData<float>();
 
     io_binding = Ort::IoBinding(session);
@@ -415,12 +415,12 @@ DogTracker::DogTracker(const ModelConfig& model_config)
     if (ort_session.GetInputCount() != 1 || ort_session.GetOutputCount() != 1) {
         throw std::runtime_error("Expected ONNX model to have exactly one input and one output");
     }
-    input_name  = ort_session.GetInputNameAllocated(0, allocator).get();
+    input_name = ort_session.GetInputNameAllocated(0, allocator).get();
     output_name = ort_session.GetOutputNameAllocated(0, allocator).get();
 
     // Get some information about the expected input tensor shapes.
-    const auto input_type                  = ort_session.GetInputTypeInfo(0);
-    const auto input_info                  = input_type.GetTensorTypeAndShapeInfo();
+    const auto input_type = ort_session.GetInputTypeInfo(0);
+    const auto input_info = input_type.GetTensorTypeAndShapeInfo();
     const std::vector<int64_t> input_shape = input_info.GetShape();
     // [batch, channels, height, width]
     if (input_shape.size() == 4 && input_shape[0] > 0) {
@@ -435,8 +435,8 @@ DogTracker::DogTracker(const ModelConfig& model_config)
     }
 
     // Get some information about the expected output tensor shapes.
-    const auto output_type                  = ort_session.GetOutputTypeInfo(0);
-    const auto output_info                  = output_type.GetTensorTypeAndShapeInfo();
+    const auto output_type = ort_session.GetOutputTypeInfo(0);
+    const auto output_info = output_type.GetTensorTypeAndShapeInfo();
     const std::vector<int64_t> output_shape = output_info.GetShape();
     if (output_info.GetElementType() != ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
         throw std::runtime_error("Expected model output tensor to use float elements.");
@@ -467,7 +467,7 @@ DogTracker::DogTracker(const ModelConfig& model_config)
 
 void DogTracker::preprocess(const cv::Mat& frame, std::vector<float>& output, Letterbox* info) const
 {
-    const int source_width  = frame.cols;
+    const int source_width = frame.cols;
     const int source_height = frame.rows;
     const float scale =
         std::min(static_cast<float>(model_config.input_size) / static_cast<float>(source_width),
@@ -537,9 +537,9 @@ std::vector<Detection> DogTracker::parse_detections(const Ort::Value& output,
                                                     const int frame_width,
                                                     const int frame_height) const
 {
-    const auto info                  = output.GetTensorTypeAndShapeInfo();
+    const auto info = output.GetTensorTypeAndShapeInfo();
     const std::vector<int64_t> shape = info.GetShape();
-    const auto* data                 = output.GetTensorData<float>();
+    const auto* data = output.GetTensorData<float>();
     return parse_detections(data, shape, batch_index, letterbox, frame_width, frame_height);
 }
 
@@ -660,7 +660,7 @@ std::vector<TrackingResult> DogTracker::process_batch(const std::vector<cv::Mat>
                 "CUDA graph inference batch does not match fixed model batch.");
         }
         cuda_graph_output_data = cuda_graph_io->run(ort_session, input_buffer);
-        used_cuda_graph_io     = true;
+        used_cuda_graph_io = true;
     }
 #endif
     if (!used_cuda_graph_io) {
@@ -676,8 +676,8 @@ std::vector<TrackingResult> DogTracker::process_batch(const std::vector<cv::Mat>
                                                                         input_buffer.size(),
                                                                         input_shape.data(),
                                                                         input_shape.size());
-        const char* input_name_ptr    = input_name.c_str();
-        const char* output_name_ptr   = output_name.c_str();
+        const char* input_name_ptr = input_name.c_str();
+        const char* output_name_ptr = output_name.c_str();
 
         // Actual forward pass.
         outputs = ort_session.Run(
@@ -693,7 +693,7 @@ std::vector<TrackingResult> DogTracker::process_batch(const std::vector<cv::Mat>
         bool parsed_cuda_graph_output = false;
 #if USE_CUDA && USE_TENSORRT
         if (cuda_graph_output_data != nullptr) {
-            detections               = parse_detections(cuda_graph_output_data,
+            detections = parse_detections(cuda_graph_output_data,
                                           cuda_graph_io->output_shape,
                                           i,
                                           letterboxes[i],

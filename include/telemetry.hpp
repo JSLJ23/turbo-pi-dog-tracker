@@ -41,7 +41,7 @@ class TcpTelemetry final : public TelemetrySink {
         void accept_loop();
 
         std::string host;
-        int port      = 0;
+        int port = 0;
         int server_fd = -1;
 
         // Implementation details are hidden so consumers of this header do not need
