@@ -42,7 +42,7 @@ struct ModelConfig {
         int batch_size = 32;
         bool use_cuda = false;
         bool use_tensorrt = false;
-        bool tensorrt_fp16 = true;
+        bool tensorrt_fp16 = false;
         fs::path tensorrt_cache_path{"tensorrt_cache"};
 };
 
