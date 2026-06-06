@@ -29,6 +29,10 @@ find_package(onnxruntime REQUIRED CONFIG)
 find_package(glaze REQUIRED)
 find_package(Threads REQUIRED)
 
+if(USE_CUDA)
+  find_package(CUDAToolkit REQUIRED)
+endif()
+
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 
 add_executable(
@@ -51,5 +55,9 @@ target_link_libraries(
           onnxruntime::onnxruntime
           glaze::glaze
           Threads::Threads)
+
+if(USE_CUDA)
+  target_link_libraries(${PROJECT_NAME} PRIVATE CUDA::cudart)
+endif()
 
 install(TARGETS ${PROJECT_NAME} RUNTIME DESTINATION bin)

@@ -72,6 +72,7 @@
                 export CUDA_LIB=${cudaPackages.cudatoolkit}/lib
                 export CUDNN_HOME=${cudaPackages.cudnn}
                 export TENSORRT_HOME=${tensorrtRoot}
+                export CPATH=${cudaPackages.cudatoolkit}/include''${CPATH:+:$CPATH}
               '' + ''
                 export DOG_TRACKER_CMAKE_FLAGS="-DUSE_CUDA=${cmakeCudaFlag} -DUSE_TENSORRT=${cmakeTensorRtFlag}"
                 export GTK_PATH=${libcanberra-gtk3}/lib/gtk-3.0''${GTK_PATH:+:$GTK_PATH}
@@ -87,10 +88,10 @@
           default = pkgs.mkShell {
             packages = buildDependencies ++ cppDependencies
               ++ [ pkgs.v4l-utils ];
-            shellHook = ''
+            shellHook = commonEnv + ''
               bash ./nix_env_setup.sh
               echo "You are in a GCC-based nix shell"
-            '' + commonEnv;
+            '';
           };
         });
       packages = forAllSystems ({ pkgs, projectName, buildDependencies

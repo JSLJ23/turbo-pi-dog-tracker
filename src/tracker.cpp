@@ -3,6 +3,10 @@
 #include <onnxruntime_cxx_api.h>
 #include <opencv2/imgproc.hpp>
 
+#if USE_CUDA && USE_TENSORRT
+#include <cuda_runtime_api.h>
+#endif
+
 #include <algorithm>
 #include <filesystem>
 #include <iostream>
@@ -139,7 +143,7 @@ static std::vector<Detection> parse_raw_model_outputs(const float* raw_data,
     return detections;
 }
 
-Track update_track(Track& track, const std::vector<Detection>& detections)
+static Track update_track(Track& track, const std::vector<Detection>& detections)
 {
     // The tracker tolerates 10 missed frames.
     // On the 11th missed frame, it marks the track inactive/lost.
@@ -221,7 +225,7 @@ static void append_tensorrt_provider(Ort::SessionOptions& session_options,
 
     // Simple Tensor RT options for single GPU setup for now, can update in future.
     Ort::TensorRTProviderOptions tensorrt_options;
-    std::unordered_map<std::string, std::string> options{
+    const std::unordered_map<std::string, std::string> options{
         {"device_id",               "0"                                      },
         {"trt_engine_cache_enable", "1"                                      },
         {"trt_engine_cache_path",   model_config.tensorrt_cache_path.string()},
@@ -237,8 +241,11 @@ static void append_tensorrt_provider(Ort::SessionOptions& session_options,
 }
 #endif
 
-static Ort::Session create_ort_session(const Ort::Env& ort_env, const ModelConfig& model_config)
+static Ort::Session create_ort_session(const Ort::Env& ort_env,
+                                       const ModelConfig& model_config,
+                                       bool& using_tensorrt_provider)
 {
+    using_tensorrt_provider = false;
 #if USE_TENSORRT && USE_CUDA
     if (model_config.use_tensorrt && model_config.use_cuda) {
         try {
@@ -247,6 +254,7 @@ static Ort::Session create_ort_session(const Ort::Env& ort_env, const ModelConfi
             append_cuda_provider(session_options);
 
             Ort::Session session(ort_env, model_config.model_weights_path.c_str(), session_options);
+            using_tensorrt_provider = true;
             std::cout << "ONNX Runtime provider initialisation with Tensor RT successful"
                       << std::endl;
             return session;
@@ -280,11 +288,125 @@ static Ort::Session create_ort_session(const Ort::Env& ort_env, const ModelConfi
     return session;
 }
 
+#if USE_CUDA && USE_TENSORRT
+static size_t check_tensor_total_size(const std::vector<int64_t>& shape,
+                                      const std::string_view tensor_name)
+{
+    if (shape.empty()) {
+        throw std::runtime_error(std::string(tensor_name) + " shape is empty.");
+    }
+
+    size_t total_size = 1;
+    for (const int64_t dimension : shape) {
+        if (dimension <= 0) {
+            throw std::runtime_error(std::string(tensor_name) +
+                                     " shape must be fixed and positive");
+        }
+        const auto dimension_size_t = static_cast<size_t>(dimension);
+        if (total_size > std::numeric_limits<size_t>::max() / dimension_size_t) {
+            throw std::runtime_error(std::string(tensor_name) + " shape is too large");
+        }
+        total_size *= dimension_size_t;
+    }
+    return total_size;
+}
+
+static void check_cuda(const cudaError_t status, const std::string_view action)
+{
+    if (status != cudaSuccess) {
+        throw std::runtime_error(std::string(action) + ": " + cudaGetErrorString(status));
+    }
+}
+
+DogTracker::CUDAGraphIO::CUDAGraphIO(Ort::Session& session,
+                                     const std::string& input_name,
+                                     const std::string& output_name,
+                                     const std::vector<int64_t>& input_shape,
+                                     const std::vector<int64_t>& output_shape,
+                                     const int fixed_batch_size,
+                                     const int input_size)
+{
+    // Fixed size and shapes for input and output tensors as they'll use static GPU buffers.
+    if (input_shape.size() != 4 || input_shape[0] <= 0 || input_shape[1] != 3 ||
+        input_shape[2] != input_size || input_shape[3] != input_size) {
+        throw std::runtime_error("TensorRT CUDA graph I/O requires fixed input shape [batch, 3, "
+                                 "input_size, input_size].");
+    }
+    if (output_shape.size() != 3 || output_shape[0] != fixed_batch_size || output_shape[2] != 6) {
+        throw std::runtime_error(
+            "TensorRT CUDA graph I/O requires fixed output shape [batch, detections, 6].");
+    }
+
+    const std::vector<int64_t> bound_input_shape{
+        static_cast<int64_t>(fixed_batch_size), 3, input_size, input_size};
+    this->output_shape = output_shape;
+    // Get the total sizes for input and output tensors for memory allocation. These values get
+    // stored as fields in the helper CUDAGraphIO struct.
+    input_element_count = check_tensor_total_size(bound_input_shape, "TensorRT CUDA graph input");
+    output_element_count =
+        check_tensor_total_size(this->output_shape, "TensorRT CUDA graph output");
+
+    host_output_buffer.resize(output_element_count);
+
+    cuda_memory_info = Ort::MemoryInfo("Cuda", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+    cuda_allocator   = Ort::Allocator(session, cuda_memory_info);
+
+    // Tensor wrapper objects.
+    gpu_input_tensor = Ort::Value::CreateTensor<float>(
+        cuda_allocator, bound_input_shape.data(), bound_input_shape.size());
+    gpu_output_tensor = Ort::Value::CreateTensor<float>(
+        cuda_allocator, this->output_shape.data(), this->output_shape.size());
+
+    // Actual pointers to GPU memory holding the tensor data.
+    input_data_gpu_ptr  = gpu_input_tensor.GetTensorMutableData<float>();
+    output_data_gpu_ptr = gpu_output_tensor.GetTensorMutableData<float>();
+
+    io_binding = Ort::IoBinding(session);
+    io_binding.BindInput(input_name.c_str(), gpu_input_tensor);
+    io_binding.BindOutput(output_name.c_str(), gpu_output_tensor);
+
+    std::cout << "TensorRT CUDA graph I/O binding initialised input element count="
+              << input_element_count << " output element count=" << output_element_count
+              << std::endl;
+}
+
+// CUDAGraphIO helper struct will abstract the ONNX Runtime session.Run functional call with the
+// static GPU memory buffers.
+DogTracker::CUDAGraphIO::OutputView DogTracker::CUDAGraphIO::run(
+    Ort::Session& session, const std::vector<float>& host_input_buffer)
+{
+    if (host_input_buffer.size() != input_element_count) {
+        throw std::runtime_error("Input host tensor does not match bound CUDA graph input tensor.");
+    }
+
+    check_cuda(cudaMemcpy(input_data_gpu_ptr,
+                          host_input_buffer.data(),
+                          input_element_count * sizeof(float),
+                          cudaMemcpyHostToDevice),
+               "Copy input tensor from host to GPU.");
+
+    // Ensure input GPU copies / writes are complete before inference reads them.
+    io_binding.SynchronizeInputs();
+    // Run inference using the bound input/output buffers.
+    session.Run(Ort::RunOptions{nullptr}, io_binding);
+    // Ensure output GPU writes are complete before you read/copy outputs.
+    io_binding.SynchronizeOutputs();
+
+    check_cuda(cudaMemcpy(host_output_buffer.data(),
+                          output_data_gpu_ptr,
+                          output_element_count * sizeof(float),
+                          cudaMemcpyDeviceToHost),
+               "Copy output tensor from GPU to host");
+
+    return {host_output_buffer.data(), &output_shape};
+}
+
+#endif
 
 DogTracker::DogTracker(const ModelConfig& model_config)
     : model_config(model_config), ort_env(ORT_LOGGING_LEVEL_WARNING, "DogTracker")
 {
-    ort_session = create_ort_session(ort_env, this->model_config);
+    ort_session = create_ort_session(ort_env, this->model_config, using_tensorrt_provider);
 
     // ONNX Runtime’s API allocates the input/output name strings.
     const Ort::AllocatorWithDefaultOptions allocator;
@@ -312,6 +434,14 @@ DogTracker::DogTracker(const ModelConfig& model_config)
         }
     }
 
+    // Get some information about the expected output tensor shapes.
+    const auto output_type                  = ort_session.GetOutputTypeInfo(0);
+    const auto output_info                  = output_type.GetTensorTypeAndShapeInfo();
+    const std::vector<int64_t> output_shape = output_info.GetShape();
+    if (output_info.GetElementType() != ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
+        throw std::runtime_error("Expected model output tensor to use float elements.");
+    }
+
     // Reserve space for buffers used to build one ONNX input batch.
     frame_values = 3 * static_cast<size_t>(model_config.input_size) *
                    static_cast<size_t>(model_config.input_size);
@@ -320,6 +450,19 @@ DogTracker::DogTracker(const ModelConfig& model_config)
     input_buffer.reserve(reserved_batch_size * frame_values);
     padding_sample.reserve(frame_values);
     letterboxes.reserve(static_cast<size_t>(model_config.batch_size));
+
+#if USE_CUDA && USE_TENSORRT
+    if (using_tensorrt_provider) {
+        cuda_graph_io = std::make_unique<CUDAGraphIO>(ort_session,
+                                                      input_name,
+                                                      output_name,
+                                                      input_shape,
+                                                      output_shape,
+                                                      fixed_batch_size,
+                                                      model_config.input_size);
+    }
+
+#endif
 }
 
 void DogTracker::preprocess(const cv::Mat& frame, std::vector<float>& output, Letterbox* info) const
@@ -397,7 +540,16 @@ std::vector<Detection> DogTracker::parse_detections(const Ort::Value& output,
     const auto info                  = output.GetTensorTypeAndShapeInfo();
     const std::vector<int64_t> shape = info.GetShape();
     const auto* data                 = output.GetTensorData<float>();
+    return parse_detections(data, shape, batch_index, letterbox, frame_width, frame_height);
+}
 
+std::vector<Detection> DogTracker::parse_detections(const float* output_data,
+                                                    const std::vector<int64_t>& shape,
+                                                    const size_t batch_index,
+                                                    const Letterbox& letterbox,
+                                                    const int frame_width,
+                                                    const int frame_height) const
+{
     // shape[0] = number of images in this inference batch.
     // shape[1] = number of detection rows per image.
     // shape[2] = 6 values per detection, [x1, y1, x2, y2, score, class].
@@ -418,21 +570,36 @@ std::vector<Detection> DogTracker::parse_detections(const Ort::Value& output,
     }
 
     const int detections_per_frame = static_cast<int>(shape[1]);
-    // data points to the start of the whole ONNX output tensor
+    // The output_data points to the start of the whole ONNX output tensor.
     // Move the pointer to the start of the selected frame’s detections.
-    data += batch_index * static_cast<size_t>(detections_per_frame) * 6;
-    std::vector<Detection> detections     = parse_raw_model_outputs(data,
+    const float* data = output_data + batch_index * static_cast<size_t>(detections_per_frame) * 6;
+    // Converts raw model output rows [x1,y1,x2,y2,score,class] into validated dog Detection objects
+    // in original frame coordinates.
+    std::vector<Detection> detections = parse_raw_model_outputs(data,
                                                                 detections_per_frame,
                                                                 letterbox,
                                                                 frame_width,
                                                                 frame_height,
                                                                 model_config.confidence_threshold);
+    // Apply non-maximum suppression.
     std::vector<Detection> nms_detections = nms(std::move(detections), model_config.nms_threshold);
     return nms_detections;
 }
 
 std::vector<TrackingResult> DogTracker::process_batch(const std::vector<cv::Mat>& frames)
 {
+    // Processes a batch of frames through the complete tracking pipeline.
+    //
+    // For each frame:
+    //   1. Preprocesses and letterboxes the image into the model input format.
+    //   2. Builds a batched input tensor (padding if required by a fixed-size model).
+    //   3. Executes a model forward pass via ONNX Runtime.
+    //   4. Parses raw detections, applies NMS, and restores boxes to frame coordinates.
+    //   5. Updates the persistent dog track and produces tracking results.
+    //
+    // Returns one TrackingResult per real input frame. Any internally-added
+    // padding frames used to satisfy the model batch size are discarded.
+
     if (frames.empty())
         return {};
     if (frames.size() > static_cast<size_t>(model_config.batch_size))
@@ -483,24 +650,39 @@ std::vector<TrackingResult> DogTracker::process_batch(const std::vector<cv::Mat>
         }
     }
 
-    // Some metadata for the forward pass.
-    const std::array<int64_t, 4> input_shape{static_cast<int64_t>(inference_batch_size),
-                                             3,
-                                             model_config.input_size,
-                                             model_config.input_size};
-    const Ort::MemoryInfo memory_info =
-        Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
-    const Ort::Value input_tensor = Ort::Value::CreateTensor<float>(memory_info,
-                                                                    input_buffer.data(),
-                                                                    input_buffer.size(),
-                                                                    input_shape.data(),
-                                                                    input_shape.size());
-    const char* input_name_ptr    = input_name.c_str();
-    const char* output_name_ptr   = output_name.c_str();
+    std::vector<Ort::Value> outputs;
+    bool used_cuda_graph_io = false;
+#if USE_CUDA && USE_TENSORRT
+    CUDAGraphIO::OutputView cuda_graph_output;
+    if (cuda_graph_io) {
+        if (inference_batch_size != static_cast<size_t>(fixed_batch_size)) {
+            throw std::runtime_error(
+                "CUDA graph inference batch does not match fixed model batch.");
+        }
+        cuda_graph_output  = cuda_graph_io->run(ort_session, input_buffer);
+        used_cuda_graph_io = true;
+    }
+#endif
+    if (!used_cuda_graph_io) {
+        // Some metadata for the forward pass.
+        const std::array<int64_t, 4> input_shape{static_cast<int64_t>(inference_batch_size),
+                                                 3,
+                                                 model_config.input_size,
+                                                 model_config.input_size};
+        const Ort::MemoryInfo memory_info =
+            Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
+        const Ort::Value input_tensor = Ort::Value::CreateTensor<float>(memory_info,
+                                                                        input_buffer.data(),
+                                                                        input_buffer.size(),
+                                                                        input_shape.data(),
+                                                                        input_shape.size());
+        const char* input_name_ptr    = input_name.c_str();
+        const char* output_name_ptr   = output_name.c_str();
 
-    // Actual forward pass.
-    const auto outputs = ort_session.Run(
-        Ort::RunOptions{nullptr}, &input_name_ptr, &input_tensor, 1, &output_name_ptr, 1);
+        // Actual forward pass.
+        outputs = ort_session.Run(
+            Ort::RunOptions{nullptr}, &input_name_ptr, &input_tensor, 1, &output_name_ptr, 1);
+    }
 
 
     // Convert raw ONNX outputs into one TrackingResult per real input frame.
@@ -508,7 +690,19 @@ std::vector<TrackingResult> DogTracker::process_batch(const std::vector<cv::Mat>
     results.reserve(frames.size());
     for (const auto& [i, frame] : std::views::enumerate(frames)) {
         std::vector<Detection> detections;
-        if (!outputs.empty() && outputs[0].IsTensor()) {
+        bool parsed_cuda_graph_output = false;
+#if USE_CUDA && USE_TENSORRT
+        if (cuda_graph_output.data != nullptr && cuda_graph_output.shape != nullptr) {
+            detections               = parse_detections(cuda_graph_output.data,
+                                          *cuda_graph_output.shape,
+                                          i,
+                                          letterboxes[i],
+                                          frame.cols,
+                                          frame.rows);
+            parsed_cuda_graph_output = true;
+        }
+#endif
+        if (!parsed_cuda_graph_output && !outputs.empty() && outputs[0].IsTensor()) {
             // Parse the model output for this specific batch slot.
             detections = parse_detections(outputs[0], i, letterboxes[i], frame.cols, frame.rows);
         }
