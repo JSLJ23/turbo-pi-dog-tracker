@@ -372,8 +372,8 @@ DogTracker::CUDAGraphIO::CUDAGraphIO(Ort::Session& session,
 
 // CUDAGraphIO helper struct will abstract the ONNX Runtime session.Run functional call with the
 // static GPU memory buffers.
-DogTracker::CUDAGraphIO::OutputView DogTracker::CUDAGraphIO::run(
-    Ort::Session& session, const std::vector<float>& host_input_buffer)
+const float* DogTracker::CUDAGraphIO::run(Ort::Session& session,
+                                          const std::vector<float>& host_input_buffer)
 {
     if (host_input_buffer.size() != input_element_count) {
         throw std::runtime_error("Input host tensor does not match bound CUDA graph input tensor.");
@@ -398,7 +398,7 @@ DogTracker::CUDAGraphIO::OutputView DogTracker::CUDAGraphIO::run(
                           cudaMemcpyDeviceToHost),
                "Copy output tensor from GPU to host");
 
-    return {host_output_buffer.data(), &output_shape};
+    return host_output_buffer.data();
 }
 
 #endif
@@ -653,14 +653,14 @@ std::vector<TrackingResult> DogTracker::process_batch(const std::vector<cv::Mat>
     std::vector<Ort::Value> outputs;
     bool used_cuda_graph_io = false;
 #if USE_CUDA && USE_TENSORRT
-    CUDAGraphIO::OutputView cuda_graph_output;
+    const float* cuda_graph_output_data = nullptr;
     if (cuda_graph_io) {
         if (inference_batch_size != static_cast<size_t>(fixed_batch_size)) {
             throw std::runtime_error(
                 "CUDA graph inference batch does not match fixed model batch.");
         }
-        cuda_graph_output  = cuda_graph_io->run(ort_session, input_buffer);
-        used_cuda_graph_io = true;
+        cuda_graph_output_data = cuda_graph_io->run(ort_session, input_buffer);
+        used_cuda_graph_io     = true;
     }
 #endif
     if (!used_cuda_graph_io) {
@@ -692,9 +692,9 @@ std::vector<TrackingResult> DogTracker::process_batch(const std::vector<cv::Mat>
         std::vector<Detection> detections;
         bool parsed_cuda_graph_output = false;
 #if USE_CUDA && USE_TENSORRT
-        if (cuda_graph_output.data != nullptr && cuda_graph_output.shape != nullptr) {
-            detections               = parse_detections(cuda_graph_output.data,
-                                          *cuda_graph_output.shape,
+        if (cuda_graph_output_data != nullptr) {
+            detections               = parse_detections(cuda_graph_output_data,
+                                          cuda_graph_io->output_shape,
                                           i,
                                           letterboxes[i],
                                           frame.cols,
